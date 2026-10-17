@@ -22,12 +22,13 @@ ap.add_argument("--tokenizer", required=True)
 ap.add_argument("--lexicon", required=True)
 ap.add_argument("--out", required=True)
 ap.add_argument("--kpos", type=int, default=32)
-ap.add_argument("--kneg", type=int, default=16)
+ap.add_argument("--kneg", type=int, default=32)
 ap.add_argument("--batch", type=int, default=256)
 ap.add_argument("--sem-layer", type=float, default=0.3, help="fraction of depth for the semantic embedding (see py/exp/semlayers.py)")
 ap.add_argument("--sem-dim", type=int, default=128)
 ap.add_argument("--sem-extra", default="", help="extra depth fractions to export as sem_L{l}.bin (experiments)")
 ap.add_argument("--limit", type=int, default=0)
+ap.add_argument("--entry-rank", type=int, default=32, help="a neuron qualifies when the input would enter its top-N list")
 args = ap.parse_args()
 
 PREFIX, SUFFIX, EXTRA = "<|im_start|>user\n", "<|im_end|>", 1
@@ -124,7 +125,7 @@ os.makedirs(args.out, exist_ok=True)
 mean_mx = (s_mx / C).float(); std_mx = (s_mx2 / C - (s_mx / C) ** 2).clamp_min(0).sqrt().float()
 mean_mn = (s_mn / C).float(); std_mn = (s_mn2 / C - (s_mn / C) ** 2).clamp_min(0).sqrt().float()
 # columns: mean/std of span-max, mean/std of span-min, entry thresholds of the top-16 lists
-thr = 16
+thr = args.entry_rank
 stats = torch.stack([mean_mx, std_mx, mean_mn, std_mn, top_v[:, :, thr - 1], bot_v[:, :, thr - 1]], -1)
 stats = stats.cpu().numpy().astype(np.float16)  # [L,F,6]
 stats.tofile(os.path.join(args.out, "stats.bin"))

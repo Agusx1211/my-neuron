@@ -2,7 +2,7 @@
 
 import { $, conceal, h, reveal } from './dom';
 
-const EXAMPLES = ['Lionel Messi', 'pizza', 'nostalgia', 'Buenos Aires', 'agusx1211', 'black holes', 'Taylor Swift'];
+const EXAMPLES = ['Lionel Messi', 'pizza', 'nostalgia', 'Tokyo', 'agusx1211', 'black holes', 'Taylor Swift'];
 
 export class Prompt {
   private root = $('prompt');
