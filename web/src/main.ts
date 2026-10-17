@@ -18,10 +18,13 @@ import { initAnalytics, track } from './analytics';
 
 // a shared link (?q=...) replays someone's neuron; strip the text from the URL
 // before analytics loads so it never gets reported
-const sharedQuery = new URLSearchParams(location.search).get('q')?.trim().slice(0, 160) || null;
+const params = new URLSearchParams(location.search);
+const sharedQuery = params.get('q')?.trim().slice(0, 160) || null;
+const sharedAt = /^\d+$/.test(params.get('at') ?? '') ? Number(params.get('at')) : null;
 if (sharedQuery) {
   const u = new URL(location.href);
   u.searchParams.delete('q');
+  u.searchParams.delete('at');
   history.replaceState(null, '', u);
 }
 initAnalytics();
@@ -185,7 +188,7 @@ async function loadModel(m: ModelSpec) {
     if (now() === 'ready') {
       $<HTMLInputElement>('prompt-input').value = sharedQuery;
       track('shared_open');
-      void analyze(sharedQuery);
+      void analyze(sharedQuery, sharedAt);
     }
   }
 }
@@ -196,12 +199,13 @@ const prompt = new Prompt((text) => void analyze(text));
 const status = $('status');
 const say = (msg: string) => { status.textContent = msg; status.hidden = false; };
 
-async function analyze(text: string) {
+async function analyze(text: string, at: number | null = null) {
   if (state !== 'ready' || !info) return;
   setState('analyzing');
   sound.setMood('analyzing');
   const from = prompt.inputRect;
-  const pending = engine.analyze(text);
+  // a shared link may point at a token the text doesn't have (e.g. on the other model)
+  const pending = at === null ? engine.analyze(text) : engine.analyze(text, at).catch(() => engine.analyze(text));
   await prompt.hide();
   say(`Running “${text.length > 28 ? text.slice(0, 27) + '…' : text}” through ${info.layers} layers on your GPU…`);
   let a: Analysis;
@@ -268,7 +272,46 @@ const card = new Card({
   onAgain: () => void again(),
   onRunner: (i) => void selectHit(i),
   onTest: (text) => void testConcept(text),
+  onToken: (at) => void readAt(at),
 });
+
+/** Re-read the same text at another token (null = the end of the text); no new forward pass. */
+async function readAt(at: number | null) {
+  if (!analysis || !info || state !== 'focused') return;
+  const gen = ++probeGen;
+  let a: Analysis;
+  try {
+    a = await engine.analyze(analysis.text, at);
+  } catch (e) {
+    toast(`Couldn't read that token: ${(e as Error).message ?? e}`);
+    return;
+  }
+  if (gen !== probeGen || state !== 'focused') return;
+  if (!a.top.length) {
+    toast('No neuron stands out at that token, try another one.');
+    sound.error();
+    return;
+  }
+  analysis = a;
+  hitIdx = 0;
+  const win = a.top[0];
+  track('token_select', {
+    position: at === null ? 'text' : at === a.tokens.length ? 'end' : 'token',
+    tokens: a.tokens.length, layer: win.layer, pole: win.pole, z: Math.round(win.z),
+  });
+  constellation.hide();
+  card.show(a, info, true);
+  tower.setHeat(a.heat);
+  tower.setHits(a.top.slice(0, 24));
+  void tower.pulse(900);
+  const p = focusedPosition(win);
+  tower.focus(win.layer, win.index, 1500);
+  hero.moveTo(p, win.pole, 2000);
+  sound.whoosh('side', 1.8);
+  sound.humOn(win.layer, win.index, win.pole);
+  sound.setMood('focused', { dark: win.pole < 0 });
+  await flyTo(stage.tweens, stage.camera, stage.controls, focusShot(p), { duration: 2000, arc: 0.25 });
+}
 
 async function selectHit(i: number) {
   if (!analysis || state !== 'focused') return;
@@ -396,8 +439,11 @@ function shareData() {
   const mine = analysis.text.trim().toLowerCase();
   const also = (hit.preview ?? []).filter((p) => p.toLowerCase() !== mine).slice(0, 3);
   const list = also.length > 1 ? `${also.slice(0, -1).join(', ')} and ${also[also.length - 1]}` : also[0];
-  const url = `${location.origin}${location.pathname}?q=${encodeURIComponent(analysis.text)}`;
-  const text = `“${analysis.text}” lights up layer ${hit.layer}, neuron #${fmtNum(hit.index)} of ${info.name}`
+  const at = analysis.at;
+  const url = `${location.origin}${location.pathname}?q=${encodeURIComponent(analysis.text)}${at === null ? '' : `&at=${at}`}`;
+  const subject = at === null || at === analysis.tokens.length ? `“${analysis.text}”`
+    : `“${analysis.tokens[at].text.trim()}” in “${analysis.text}”`;
+  const text = `${subject} lights up layer ${hit.layer}, neuron #${fmtNum(hit.index)} of ${info.name}`
     + (list ? `. It also fires for ${list}.` : '.')
     + ' Find yours, it runs entirely in your browser:';
   return { text, url };

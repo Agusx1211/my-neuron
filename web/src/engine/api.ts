@@ -38,7 +38,7 @@ export interface NeuronHit {
   pole: 1 | -1;          // which side of the neuron fired: +1 positive, -1 negative
   z: number;             // how many baseline std devs past normal
   act: number;           // raw activation (max for +, min for −) over the input
-  perToken: number[];    // activation at each input token (same order as Analysis.tokens)
+  perToken: number[];    // activation at each input token (same order as Analysis.tokens), then at the end of the message
   match?: number;        // 0..1 similarity between the input and the neuron's top concepts
   preview?: string[];    // the neuron's strongest atlas concepts for this pole
 }
@@ -46,6 +46,8 @@ export interface NeuronHit {
 export interface Analysis {
   text: string;
   tokens: TokenInfo[];   // the tokens of the user's text
+  at: number | null;     // the token the neurons were read at (tokens.length = end of the message), null = the end of the text
+  reading: number[];     // every position that was read (same indexing as `at`)
   top: NeuronHit[];      // best neurons, strongest first (≈24)
   heat: Float32Array;    // [layers * neurons] signed z-score of every neuron for this input (+ = positive pole)
   ms: number;            // forward pass time
@@ -75,7 +77,7 @@ export interface Engine {
   init(): Promise<{ webgpu: boolean; adapter?: string; reason?: string }>;
   isCached(model: ModelSpec): Promise<boolean>;
   load(model: ModelSpec, onProgress: (p: LoadProgress) => void): Promise<ModelInfo>;
-  analyze(text: string): Promise<Analysis>;
+  analyze(text: string, at?: number | null): Promise<Analysis>;
   atlas(layer: number, index: number): Promise<NeuronAtlas>;
   probe(layer: number, index: number, pole: 1 | -1, texts: string[], onResult?: (r: ProbeResult) => void): Promise<ProbeResult[]>;
 }

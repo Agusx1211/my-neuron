@@ -8,6 +8,7 @@ export interface CardHandlers {
   onAgain: () => void;
   onRunner: (i: number) => void;
   onTest: (text: string) => void;
+  onToken: (at: number | null) => void;
 }
 
 const signed = (v: number, d = 2) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
@@ -37,13 +38,13 @@ export class Card {
     return this.current;
   }
 
-  show(analysis: Analysis, info: ModelInfo) {
+  show(analysis: Analysis, info: ModelInfo, keepScroll = false) {
     this.analysis = analysis;
     this.info = info;
     $('test-results').innerHTML = '';
     this.setHit(0);
     reveal(this.root);
-    this.root.querySelector('.card-scroll')!.scrollTop = 0;
+    if (!keepScroll) this.root.querySelector('.card-scroll')!.scrollTop = 0;
   }
 
   setHit(i: number) {
@@ -52,7 +53,10 @@ export class Card {
     this.current = i;
     const hit = a.top[i];
     const pos = hit.pole > 0;
-    $('card-eyebrow').textContent = i === 0 ? 'Your neuron' : `Runner-up #${i + 1}`;
+    $('card-eyebrow').textContent = i > 0 ? `Runner-up #${i + 1}`
+      : a.at === null ? 'Your neuron'
+      : a.at === a.tokens.length ? 'Your neuron at the end'
+      : `Your neuron at “${a.tokens[a.at].text.trim()}”`;
     const title = $('card-title');
     title.innerHTML = '';
     title.append(
@@ -95,20 +99,36 @@ export class Card {
     const strip = $('token-strip');
     strip.innerHTML = '';
     const a = this.analysis!;
+    const T = a.tokens.length;
     const m = Math.max(1e-6, ...hit.perToken.map((v) => Math.abs(v)));
-    a.tokens.forEach((t, j) => {
+    const tint = hit.pole > 0 ? '255,181,71' : '63,184,255';
+    // the user's tokens, then the end of the message (where the model has read everything)
+    [...a.tokens.map((t) => tokenLabel(t.text)), 'end'].forEach((label, j) => {
       const v = hit.perToken[j] ?? 0;
       const k = Math.max(0, Math.min(1, (v * hit.pole) / m));
-      const tint = hit.pole > 0 ? '255,181,71' : '63,184,255';
-      const el = h('span', { class: 'tok', text: tokenLabel(t.text), attrs: { 'data-v': signed(v) } });
+      const cls = ['tok'];
+      if (j === T) cls.push('tok-end');
+      if (a.reading.includes(j)) cls.push('reading');
+      const el = h('button', { class: cls.join(' '), text: label, attrs: { type: 'button', 'data-v': signed(v), 'aria-pressed': String(a.at === j) } });
       el.style.background = `rgba(${tint},${(0.05 + 0.5 * k * k).toFixed(3)})`;
       el.style.borderColor = `rgba(${tint},${(0.1 + 0.6 * k).toFixed(3)})`;
       if (k > 0.6) {
         el.style.color = '#fff';
         el.style.boxShadow = `0 0 ${Math.round(14 * k)}px rgba(${tint},${(0.5 * k).toFixed(2)})`;
       }
+      el.addEventListener('click', () => this.handlers.onToken(a.at === j ? null : j));
       strip.append(el);
     });
+    const note = $('token-note');
+    note.innerHTML = '';
+    note.append(h('i', { class: 'reading-key' }));
+    if (a.at === null) {
+      note.append('Read at the end of your text, where the model has seen all of it. Tap any token to see the neuron that fires there.');
+    } else {
+      const back = h('button', { class: 'link-btn', text: '↺ whole text', attrs: { type: 'button' } });
+      back.addEventListener('click', () => this.handlers.onToken(null));
+      note.append(a.at === T ? 'Read at the end of your message only · ' : `Read at “${a.tokens[a.at].text.trim()}” only · `, back);
+    }
   }
 
   private renderLayerMap(hit: NeuronHit) {

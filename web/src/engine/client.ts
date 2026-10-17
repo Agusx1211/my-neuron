@@ -48,7 +48,7 @@ export class WorkerEngine implements Engine {
     return this.call<ModelInfo>('load', [model, atlas], onProgress);
   }
 
-  analyze(text: string) { return this.call<Analysis>('analyze', [text]); }
+  analyze(text: string, at: number | null = null) { return this.call<Analysis>('analyze', [text, at]); }
 
   atlas(layer: number, index: number) { return this.call<NeuronAtlas>('atlas', [layer, index]); }
 

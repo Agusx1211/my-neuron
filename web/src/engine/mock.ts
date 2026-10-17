@@ -99,11 +99,11 @@ export class MockEngine implements Engine {
     return this.info;
   }
 
-  async analyze(text: string): Promise<Analysis> {
+  async analyze(text: string, at: number | null = null): Promise<Analysis> {
     const info = this.info ?? (await this.load({ id: 'qwen3.5-4b', name: 'Qwen3.5-4B', url: '', bytes: 1, atlas: '' }, () => {}));
     const t0 = performance.now();
     this.lastText = text;
-    const rand = rng(hash(text));
+    const rand = rng(hash(at === null ? text : `${text}@${at}`));
     const L = info.layers, N = info.neurons;
     const tokens = fakeTokens(text).map((t, i) => ({ text: t, id: 1000 + i }));
     const heat = new Float32Array(L * N);
@@ -124,17 +124,18 @@ export class MockEngine implements Engine {
       const layer = Math.min(L - 1, Math.floor(L * (0.35 + 0.6 * rand())));
       const index = Math.floor(rand() * N);
       const pole: 1 | -1 = rand() < 0.8 ? 1 : -1;
-      const peak = Math.floor(rand() * tokens.length);
+      const peak = at ?? Math.floor(rand() * (tokens.length + 1));
       const act = pole * (1.2 + z * 0.28);
-      const perToken = tokens.map((_, j) => (j === peak ? act : act * Math.max(0, 0.6 - Math.abs(j - peak) * 0.25) * rand() + (rand() - 0.5) * 0.15));
+      const perToken = [...tokens, null].map((_, j) => (j === peak ? act : act * Math.max(0, 0.6 - Math.abs(j - peak) * 0.25) * rand() + (rand() - 0.5) * 0.15));
       const theme = (pole > 0 ? THEMES : OPPOSITES)[Math.floor(rand() * (pole > 0 ? THEMES : OPPOSITES).length)];
       const preview = theme.slice(0, 4);
       top.push({ layer, index, pole, z, act, perToken, match: 0.4 + rand() * 0.3, preview });
       heat[layer * N + index] = pole * z;
       z -= 0.25 + rand() * 0.35;
     }
-    await sleep(500 + tokens.length * 25);
-    return { text, tokens, top, heat, ms: performance.now() - t0 };
+    await sleep(at === null ? 500 + tokens.length * 25 : 60);
+    const reading = at === null ? [tokens.length - 1, tokens.length] : [at];
+    return { text, tokens, at, reading, top, heat, ms: performance.now() - t0 };
   }
 
   private conceptsFor(layer: number, index: number) {

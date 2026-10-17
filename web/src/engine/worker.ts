@@ -157,25 +157,51 @@ function frame(text: string, maxTokens = 64) {
   return { ids, body, start, end: start + body.length + Math.min(meta?.extra ?? 0, suffixIds.length) };
 }
 
-async function analyze(text: string): Promise<Analysis> {
+// The last forward pass, so reading another token of the same text needs no GPU work.
+let last: { text: string; f: ReturnType<typeof frame>; n: number; acts: Float32Array; resid: Float32Array; words: number[] } | null = null;
+
+/**
+ * Find the neurons for a text. By default they are read at the end of the text
+ * (its last word plus the end-of-message token), where the model has seen all
+ * of it; `at` reads a single token instead (`tokens.length` = end of message).
+ */
+async function analyze(text: string, at: number | null = null): Promise<Analysis> {
   if (!model || !cfg) throw new Error('model not loaded');
   if (!meta || !stats) throw new Error('concept atlas missing');
   return exclusive(async () => {
     const c = cfg!;
     const M = meta!;
-    const f = frame(text.slice(0, 300), 48); // bounded so the full capture stays < 64 MB
-    const t0 = performance.now();
-    const { acts, resid } = await model!.forward(embed(f.ids), f.ids.length, { kind: 'all' }, M.semLayer);
-    const ms = performance.now() - t0;
-    const n = f.ids.length;
-    const mask = new Uint8Array(n);
-    f.body.forEach((id, i) => { if (!STOP.has(decode(id).trim().toLowerCase())) mask[f.start + i] = 1; });
-    if (!mask.some((v) => v)) mask.fill(1, f.start, f.start + f.body.length);
-    mask.fill(1, f.start + f.body.length, f.end);
+    let ms = 0;
+    if (last?.text !== text) {
+      last = null;
+      const f = frame(text.slice(0, 300), 48); // bounded so the full capture stays < 64 MB
+      const t0 = performance.now();
+      const { acts, resid } = await model!.forward(embed(f.ids), f.ids.length, { kind: 'all' }, M.semLayer);
+      ms = performance.now() - t0;
+      let words = f.body.map((_, i) => i).filter((i) => !STOP.has(decode(f.body[i]).trim().toLowerCase()));
+      if (!words.length) words = f.body.map((_, i) => i);
+      last = { text, f, n: f.ids.length, acts, resid: resid!, words };
+    }
+    const { f, n, acts, resid, words } = last;
+    const T = f.body.length;
+    if (at !== null && !(at >= 0 && at <= T)) throw new Error(`no token at ${at}`);
+    // positions are relative to the text; T stands for the end-of-message token(s)
+    const toMask = (pos: number[]) => {
+      const mask = new Uint8Array(n);
+      for (const p of pos) {
+        if (p < T) mask[f.start + p] = 1;
+        else mask.fill(1, f.start + T, f.end);
+      }
+      return mask;
+    };
+    const reading = at !== null ? [at] : words.length ? [words[words.length - 1], T] : [T];
+    const mask = toMask(reading);
+    // what the input means: the whole text, or just the context up to a single token
+    const semMask = at === null || at === T ? toMask([...words, T]) : mask;
     const ext = spanExtrema(acts, c.nLayer, n, c.dFF, mask);
     const fp = new Float32Array(M.floorPos);
     const fn = new Float32Array(M.floorNeg);
-    const q = semEmbed(resid!, c.d, mask, semMu!, semProj!, M.semDim);
+    const q = semEmbed(resid, c.d, semMask, semMu!, semProj!, M.semDim);
     let rows = selectNeurons(ext, stats!, c.dFF, fp, fn, top8!, semE!, q, M.minLayer, Z_MIN, true, REL_POW, TOP_K);
     if (rows.length < 7 * 8) {
       // unusual input that enters few top lists: fall back to any strongly excited neuron
@@ -185,7 +211,7 @@ async function analyze(text: string): Promise<Analysis> {
     for (let i = 0; i < rows.length; i += 7) {
       const [layer, index, pole, , z, act, rel] = rows.subarray(i, i + 7);
       const perToken: number[] = [];
-      for (let t = f.start; t < f.start + f.body.length; t++) perToken.push(acts[(layer * n + t) * c.dFF + index]);
+      for (let t = f.start; t < f.start + T + 1; t++) perToken.push(acts[(layer * n + t) * c.dFF + index]);
       const t8 = (layer * c.dFF + index) * 16 + (pole > 0 ? 0 : 8);
       const preview = [...top8!.subarray(t8, t8 + 4)].map((ci) => lexicon!.concepts[ci]);
       top.push({ layer, index, pole: pole > 0 ? 1 : -1, z, act, perToken, match: Math.max(0, rel), preview });
@@ -194,6 +220,8 @@ async function analyze(text: string): Promise<Analysis> {
     return {
       text,
       tokens: f.body.map((id) => ({ id, text: decode(id) })),
+      at,
+      reading,
       top,
       heat,
       ms,
@@ -299,7 +327,7 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       case 'isCached': { const s = args[0] as ModelSpec; result = await isCached(s.id, s.bytes); break; }
       case 'load': result = await load(args[0] as ModelSpec, args[1] as string, event); break;
       case 'analyze': {
-        const a = await analyze(args[0] as string);
+        const a = await analyze(args[0] as string, (args[1] as number | null) ?? null);
         (self as unknown as Worker).postMessage({ id, result: a }, [a.heat.buffer]);
         return;
       }

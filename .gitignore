@@ -7,3 +7,4 @@ __pycache__/
 *.part
 .env.local
 *.pkl
+dev/out/

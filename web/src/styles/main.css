@@ -328,10 +328,18 @@ a { color: var(--violet-2); }
 
 .token-strip { display: flex; flex-wrap: wrap; gap: 4px; }
 .tok {
-  font-family: var(--mono); font-size: 13px; white-space: pre; padding: 3px 6px; border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.06); color: var(--text-2);
-  position: relative;
+  font-family: var(--mono); font-size: 13px; line-height: 1.45; white-space: pre; padding: 3px 6px; border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06); color: var(--text-2); background: transparent;
+  position: relative; cursor: pointer; transition: transform 0.15s var(--ease), filter 0.15s;
 }
+.tok:hover { filter: brightness(1.35); transform: translateY(-1px); }
+.tok:active { transform: translateY(0); }
+.tok.reading, .reading-key { outline: 1.5px solid var(--violet-2); outline-offset: 2px; }
+.tok-end { font-family: var(--font); font-size: 12px; font-style: italic; border-style: dashed; color: var(--muted); }
+.token-note { margin: 10px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.reading-key { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin: 0 8px 0 2px; vertical-align: -1px; }
+.link-btn { background: none; border: 0; padding: 0; color: var(--violet-2); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.link-btn:hover { color: var(--text); }
 .tok[data-v]::after {
   content: attr(data-v); position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%);
   font-size: 11px; padding: 2px 6px; border-radius: 6px; background: #0b0d1c; border: 1px solid var(--glass-border);
