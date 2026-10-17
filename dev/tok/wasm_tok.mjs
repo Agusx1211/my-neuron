@@ -1,0 +1,18 @@
+import fs from 'node:fs';
+import init, { initSync, Tokenizer, parseHeader } from '../../web/src/wasm-pkg/neuron_core.js';
+const [gguf, strings, out] = process.argv.slice(2);
+initSync({ module: fs.readFileSync(new URL('../../web/src/wasm-pkg/neuron_core_bg.wasm', import.meta.url)) });
+const fd = fs.openSync(gguf, 'r');
+const buf = Buffer.alloc(16 << 20);
+fs.readSync(fd, buf, 0, buf.length, 0);
+let t0 = performance.now();
+const hdr = JSON.parse(parseHeader(buf));
+console.log('header parsed', (performance.now() - t0).toFixed(0), 'ms; tensors', hdr.tensors.length, 'dataStart', hdr.dataStart);
+t0 = performance.now();
+const tok = new Tokenizer(buf);
+console.log('tokenizer built', (performance.now() - t0).toFixed(0), 'ms; vocab', tok.vocabSize);
+const xs = JSON.parse(fs.readFileSync(strings, 'utf8'));
+t0 = performance.now();
+const res = xs.map((s) => Array.from(tok.encode(s)));
+console.log('encoded', xs.length, 'strings in', (performance.now() - t0).toFixed(1), 'ms');
+fs.writeFileSync(out, JSON.stringify(res));

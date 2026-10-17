@@ -1,0 +1,15 @@
+{
+  "name": "neuron-core",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "neuron_core_bg.wasm",
+    "neuron_core.js",
+    "neuron_core.d.ts"
+  ],
+  "main": "neuron_core.js",
+  "types": "neuron_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

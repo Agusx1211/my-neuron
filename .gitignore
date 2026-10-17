@@ -1,0 +1,9 @@
+models/
+node_modules/
+dist/
+.venv/
+target/
+__pycache__/
+*.part
+.env.local
+*.pkl

@@ -1,0 +1,22 @@
+// 4B live-probe check on the Messi neuron (L3 #7297): probe, analyze, probe again.
+import { chromium } from '../web/node_modules/playwright-core/index.mjs';
+const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader', '--enable-unsafe-swiftshader', '--use-angle=swiftshader'] });
+const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+const t0 = Date.now();
+const log = (...a) => console.log(`[${((Date.now() - t0) / 1000).toFixed(0)}s]`, ...a);
+page.on('pageerror', (e) => log('[pageerror]', e.message));
+page.on('console', (m) => { if (m.type() !== 'debug') log('[console]', m.type(), m.text().slice(0, 200)); });
+await page.goto('http://localhost:8660/?gguf=%2Fdev-models%2Fq4b-Q4_K_M.gguf', { waitUntil: 'load' });
+await page.waitForTimeout(3000);
+await page.click('label:has(input[name=model][value="qwen3.5-4b"])');
+await page.click('#load-btn');
+await page.waitForSelector('#prompt:not([hidden])', { timeout: 3600000 });
+log('loaded');
+const texts = ['Lionel Scaloni', 'Diego Maradona', 'pizza'];
+const before = await page.evaluate((t) => window.__neuron.engine.probe(3, 7297, 1, t), texts);
+log('probe before analyze', JSON.stringify(before.map((r) => [r.text, +r.act.toFixed(3)])));
+const a = await page.evaluate(() => window.__neuron.engine.analyze('Lionel Messi').then((a) => [a.top[0].layer, a.top[0].index, a.top[0].act]));
+log('analysis', JSON.stringify(a));
+const after = await page.evaluate((t) => window.__neuron.engine.probe(3, 7297, 1, t), texts);
+log('probe after analyze', JSON.stringify(after.map((r) => [r.text, +r.act.toFixed(3)])));
+await browser.close();
