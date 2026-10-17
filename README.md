@@ -68,3 +68,7 @@ Your text is only processed on your own GPU. The site uses Google Analytics to c
 ## Credits
 
 Qwen3.5 by the Qwen team (Apache 2.0), GGUF quantization by Unsloth, the concept list is partly based on Wikipedia's Vital Articles, and the inspiration is Goodfire's work on neuron interpretability.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The model weights are not part of this repository; Qwen3.5 is released by the Qwen team under Apache 2.0.

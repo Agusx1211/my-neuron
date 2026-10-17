@@ -78,6 +78,10 @@ export class Stage {
     this.controls.autoRotateSpeed = 0.35;
 
     this.addStars();
+    // follow the host's real size: Safari can run this before the stylesheet
+    // applies (the host is then only as tall as a default 300px canvas), and
+    // no window resize event follows once the CSS lands
+    new ResizeObserver(() => this.resize()).observe(host);
     window.addEventListener('resize', () => this.resize());
     this.resize();
     this.renderer.setAnimationLoop(() => this.frame());
@@ -157,9 +161,17 @@ export class Stage {
     this.onTick((t) => { m.uniforms.uTime.value = t; });
   }
 
+  private resizeListeners = new Set<() => void>();
+
+  /** Called after the stage changes size (window resize or layout change). */
+  onResize(fn: () => void) {
+    this.resizeListeners.add(fn);
+  }
+
   private resize() {
     const w = this.host.clientWidth || innerWidth;
     const h = this.host.clientHeight || innerHeight;
+    if (w === this.width && h === this.height) return;
     this.width = w;
     this.height = h;
     this.renderer.setSize(w, h);
@@ -170,6 +182,7 @@ export class Stage {
     this.bloom.setSize(Math.round(w * pr * 0.5), Math.round(h * pr * 0.5));
     this.camera.aspect = w / h;
     this.applyShift();
+    this.resizeListeners.forEach((fn) => fn());
   }
 
   private applyShift() {

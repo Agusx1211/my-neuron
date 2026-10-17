@@ -71,7 +71,7 @@ function layoutShift(instant = false) {
     stage.setShift(0, isNarrow() ? -h * 0.06 : -h * 0.04, instant);
   }
 }
-window.addEventListener('resize', () => layoutShift());
+stage.onResize(() => layoutShift());
 
 function overviewShot(): Shot {
   const aspect = stage.size.w / stage.size.h;
